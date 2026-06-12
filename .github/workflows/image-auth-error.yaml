@@ -1,4 +1,4 @@
-name: CI failure - Image
+name: Image Auth Error
 
 on:
   push:
