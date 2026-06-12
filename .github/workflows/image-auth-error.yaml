@@ -1,4 +1,4 @@
-name: Image
+name: CI failure - Image
 
 on:
   push:

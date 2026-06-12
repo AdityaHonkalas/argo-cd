@@ -1,4 +1,4 @@
-name: Publish and Sign Container Image
+name: CI failure - Publish and Sign Container Image
 on:
   workflow_dispatch:
     inputs:
