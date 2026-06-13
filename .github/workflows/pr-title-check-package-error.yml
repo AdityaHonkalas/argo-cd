@@ -1,0 +1,41 @@
+# CI ERROR TEST WORKFLOW - PACKAGE VERSION ERROR
+# This workflow intentionally contains a package version error for testing CI failure scenarios
+# Expected Failure: Invalid action version will cause the workflow to fail
+# Trigger: Manual only (workflow_dispatch)
+
+name: "Lint PR - Package Error"
+
+on:
+  workflow_dispatch: {}
+
+permissions: {}
+
+env:
+  # a workaround to disable harden runner
+  STEP_SECURITY_HARDEN_RUNNER: ${{ vars.disable_harden_runner }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    permissions:
+      contents: read
+      pull-requests: read
+    name: Validate PR Title - PACKAGE ERROR TEST
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        if: ${{ vars.disable_harden_runner != 'true' }}
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      # ERROR INJECTION: Invalid action version reference (v99.99.99 doesn't exist)
+      - uses: thehanimo/pr-title-checker@v99.99.99
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          configuration_path: ".github/pr-title-checker-config.json"
+
+

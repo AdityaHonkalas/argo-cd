@@ -1,9 +1,9 @@
-# CI ERROR TEST WORKFLOW - AUTHENTICATION ERROR
-# This workflow intentionally contains an authentication error for testing CI failure scenarios
-# Expected Failure: Invalid registry credentials will cause Docker login to fail
+# CI ERROR TEST WORKFLOW - SYNTAX ERROR
+# This workflow intentionally contains a YAML syntax error for testing CI failure scenarios
+# Expected Failure: YAML parsing error due to malformed job dependency
 # Trigger: Manual only (workflow_dispatch)
 
-name: Image - Auth Error
+name: Image - Syntax Error
 
 on:
   workflow_dispatch: {}
@@ -58,23 +58,18 @@ jobs:
           echo "Building image for platforms: $IMAGE_PLATFORMS"
           echo "platforms=$IMAGE_PLATFORMS" >> $GITHUB_OUTPUT
 
-  build-and-publish:
-    needs: [set-vars]
+  build-only:
+    # ERROR INJECTION: Invalid job dependency - 'set-var' doesn't exist (should be 'set-vars')
+    needs: [set-var]
     permissions:
       contents: read
       packages: write
       id-token: write
     uses: ./.github/workflows/image-reuse.yaml
     with:
-      quay_image_name: ${{ needs.set-vars.outputs.quay_image_name }}
       # renovate: datasource=golang-version packageName=golang
       go-version: 1.26.4
       platforms: ${{ needs.set-vars.outputs.platforms }}
-      push: true
-    secrets:
-      # ERROR INJECTION: Invalid Quay.io credentials to simulate authentication failure
-      quay_username: invalid_username_for_testing
-      quay_password: invalid_password_for_testing_auth_error_12345
-      ghcr_username: ${{ github.actor }}
-      ghcr_password: ${{ secrets.GITHUB_TOKEN }}
+      push: false
 
+# 

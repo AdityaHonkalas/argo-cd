@@ -1,0 +1,39 @@
+# CI ERROR TEST WORKFLOW - SYNTAX ERROR
+# This workflow intentionally contains a YAML syntax error for testing CI failure scenarios
+# Expected Failure: YAML parsing error due to malformed configuration
+# Trigger: Manual only (workflow_dispatch)
+
+name: "Lint PR - Syntax Error"
+
+on:
+  workflow_dispatch: {}
+
+permissions: {}
+
+env:
+  # a workaround to disable harden runner
+  STEP_SECURITY_HARDEN_RUNNER: ${{ vars.disable_harden_runner }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    permissions:
+      contents: read
+      pull-requests: read
+    name: Validate PR Title - SYNTAX ERROR TEST
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        if: ${{ vars.disable_harden_runner != 'true' }}
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      # ERROR INJECTION: Missing 'with' keyword - this creates invalid YAML syntax
+      - uses: thehanimo/pr-title-checker@7fbfe05602bdd86f926d3fb3bccb6f3aed43bc70 # v1.4.3
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          configuration_path: ".github/pr-title-checker-config.json"
+

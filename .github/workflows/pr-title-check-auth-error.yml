@@ -1,0 +1,43 @@
+# CI ERROR TEST WORKFLOW - AUTHENTICATION ERROR
+# This workflow intentionally contains an authentication error for testing CI failure scenarios
+# Expected Failure: Invalid GitHub token will cause PR title checker to fail
+# Trigger: Manual only (workflow_dispatch)
+
+name: "Lint PR - Auth Error"
+
+on:
+  workflow_dispatch: {}
+
+permissions: {}
+
+env:
+  # a workaround to disable harden runner
+  STEP_SECURITY_HARDEN_RUNNER: ${{ vars.disable_harden_runner }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    permissions:
+      contents: read
+      pull-requests: read
+    name: Validate PR Title - AUTH ERROR TEST
+    runs-on: ubuntu-24.04
+    env:
+      # ERROR INJECTION: Invalid GitHub token to simulate authentication failure
+      GITHUB_TOKEN: ghp_INVALID_TOKEN_FOR_TESTING_AUTH_ERROR_1234567890
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        if: ${{ vars.disable_harden_runner != 'true' }}
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: thehanimo/pr-title-checker@7fbfe05602bdd86f926d3fb3bccb6f3aed43bc70 # v1.4.3
+        with:
+          GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+          configuration_path: ".github/pr-title-checker-config.json"
+
+# 

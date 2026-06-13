@@ -1,0 +1,111 @@
+# CI ERROR TEST WORKFLOW - AUTHENTICATION ERROR
+# This workflow intentionally contains an authentication error for testing CI failure scenarios
+# Expected Failure: Invalid GitHub token will cause authentication failure in test-go job
+# Trigger: Manual only (workflow_dispatch)
+
+name: Integration tests - Auth Error
+on:
+  workflow_dispatch: {}
+
+env:
+  # Golang version to use across CI steps
+  # renovate: datasource=golang-version packageName=golang
+  GOLANG_VERSION: '1.26.4'
+  # a workaround to disable harden runner
+  STEP_SECURITY_HARDEN_RUNNER: ${{ vars.disable_harden_runner }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      backend: ${{ steps.filter.outputs.backend_any_changed }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        if: ${{ vars.disable_harden_runner != 'true' }}
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        id: filter
+        with:
+          files_yaml: |
+            backend:
+              - '!ui/**'
+              - '!**.md'
+              - '!**/*.md'
+              - '!docs/**'
+
+  test-go:
+    name: Run unit tests for Go packages - AUTH ERROR TEST
+    runs-on: ubuntu-24.04
+    needs:
+      - changes
+    env:
+      # ERROR INJECTION: Invalid GitHub token to simulate authentication failure
+      GITHUB_TOKEN: ghp_INVALID_TOKEN_FOR_TESTING_AUTH_ERROR_1234567890
+      GITLAB_TOKEN: ${{ secrets.E2E_TEST_GITLAB_TOKEN }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        if: ${{ vars.disable_harden_runner != 'true' }}
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+      - name: Create checkout directory
+        run: mkdir -p ~/go/src/github.com/argoproj
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Create symlink in GOPATH
+        run: ln -s $(pwd) ~/go/src/github.com/argoproj/argo-cd
+      - name: Setup Golang
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+      - name: Install required packages
+        run: |
+          sudo apt-get install git -y
+      - name: Switch to temporal branch so we re-attach head
+        run: |
+          git switch -c temporal-pr-branch
+          git status
+      - name: Fetch complete history for blame information
+        run: |
+          git fetch --prune --no-tags --depth=1 origin +refs/heads/*:refs/remotes/origin/*
+      - name: Add ~/go/bin to PATH
+        run: |
+          echo "/home/runner/go/bin" >> $GITHUB_PATH
+      - name: Add /usr/local/bin to PATH
+        run: |
+          echo "/usr/local/bin" >> $GITHUB_PATH
+      - name: Restore go build and module cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-build-v1-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-build-v1-
+      - name: Install all tools required for building & testing
+        run: |
+          make install-test-tools-local
+      - name: Add dist to PATH
+        run: |
+          echo "/home/runner/work/argo-cd/argo-cd/dist" >> $GITHUB_PATH
+      - name: Setup git username and email
+        run: |
+          git config --global user.name "John Doe"
+          git config --global user.email "john.doe@example.com"
+      - name: Download Go modules
+        run: |
+          go mod download
+      - name: Run all unit tests (WILL FAIL DUE TO AUTH ERROR)
+        run: make test-local
+
