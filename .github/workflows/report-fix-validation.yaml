@@ -1,0 +1,204 @@
+# REPORT WORKFLOW - FIX VALIDATION
+# Generates a comprehensive Markdown report summarising the outcomes of all
+# controlled-error CI workflows (auth, package, syntax, timeout).
+# The report is written to the GitHub Actions job summary and uploaded as an
+# artifact for later retrieval.
+# Trigger: Manual only (workflow_dispatch)
+
+name: Report - Fix Validation Results
+on:
+  workflow_dispatch:
+    inputs:
+      report_title:
+        description: 'Optional title override for the report'
+        required: false
+        default: 'CI Fix Validation Report'
+        type: string
+      include_timestamp:
+        description: 'Include timestamp in the report'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  GOLANG_VERSION: '1.24.3'
+  STEP_SECURITY_HARDEN_RUNNER: ${{ vars.disable_harden_runner }}
+  REPORT_DIR: 'fix-validation-reports'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  # ── Phase 1: validate that each error-workflow category is present ──────────
+  validate-ci-build-errors:
+    name: Validate CI Build Error Workflows
+    runs-on: ubuntu-24.04
+    outputs:
+      auth_present: ${{ steps.check.outputs.auth_present }}
+      package_present: ${{ steps.check.outputs.package_present }}
+      syntax_present: ${{ steps.check.outputs.syntax_present }}
+      timeout_present: ${{ steps.check.outputs.timeout_present }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        if: ${{ vars.disable_harden_runner != 'true' }}
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Check for error workflow files
+        id: check
+        run: |
+          check_file() {
+            local file="$1"
+            local key="$2"
+            if [ -f ".github/workflows/${file}" ]; then
+              echo "${key}_present=true" >> "$GITHUB_OUTPUT"
+              echo "✅  Found: .github/workflows/${file}"
+            else
+              echo "${key}_present=false" >> "$GITHUB_OUTPUT"
+              echo "❌  Missing: .github/workflows/${file}"
+            fi
+          }
+          check_file "ci-build-auth-error.yaml"    "auth"
+          check_file "ci-build-package-error.yaml" "package"
+          check_file "ci-build-syntax-error.yaml"  "syntax"
+          check_file "ci-build-timeout-error.yaml" "timeout"
+
+  validate-image-errors:
+    name: Validate Image Error Workflows
+    runs-on: ubuntu-24.04
+    outputs:
+      auth_present: ${{ steps.check.outputs.auth_present }}
+      package_present: ${{ steps.check.outputs.package_present }}
+      syntax_present: ${{ steps.check.outputs.syntax_present }}
+      timeout_present: ${{ steps.check.outputs.timeout_present }}
+      build_present: ${{ steps.check.outputs.build_present }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        if: ${{ vars.disable_harden_runner != 'true' }}
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Check for error workflow files
+        id: check
+        run: |
+          check_file() {
+            local file="$1"
+            local key="$2"
+            if [ -f ".github/workflows/${file}" ]; then
+              echo "${key}_present=true" >> "$GITHUB_OUTPUT"
+              echo "✅  Found: .github/workflows/${file}"
+            else
+              echo "${key}_present=false" >> "$GITHUB_OUTPUT"
+              echo "❌  Missing: .github/workflows/${file}"
+            fi
+          }
+          check_file "image-auth-error.yaml"         "auth"
+          check_file "image-package-error.yaml"      "package"
+          check_file "image-syntax-error.yaml"       "syntax"
+          check_file "image-timeout-error.yaml"      "timeout"
+          check_file "image-reuse-build-error.yaml"  "build"
+
+  # ── Phase 2: generate the consolidated report ───────────────────────────────
+  generate-report:
+    name: Generate Fix Validation Report
+    runs-on: ubuntu-24.04
+    needs:
+      - validate-ci-build-errors
+      - validate-image-errors
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        if: ${{ vars.disable_harden_runner != 'true' }}
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Golang
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+
+      - name: Create report output directory
+        run: mkdir -p ${{ env.REPORT_DIR }}
+
+      - name: Generate Markdown report
+        env:
+          REPORT_TITLE: ${{ inputs.report_title }}
+          INCLUDE_TIMESTAMP: ${{ inputs.include_timestamp }}
+          CI_AUTH: ${{ needs.validate-ci-build-errors.outputs.auth_present }}
+          CI_PKG: ${{ needs.validate-ci-build-errors.outputs.package_present }}
+          CI_SYN: ${{ needs.validate-ci-build-errors.outputs.syntax_present }}
+          CI_TMO: ${{ needs.validate-ci-build-errors.outputs.timeout_present }}
+          IMG_AUTH: ${{ needs.validate-image-errors.outputs.auth_present }}
+          IMG_PKG: ${{ needs.validate-image-errors.outputs.package_present }}
+          IMG_SYN: ${{ needs.validate-image-errors.outputs.syntax_present }}
+          IMG_TMO: ${{ needs.validate-image-errors.outputs.timeout_present }}
+          IMG_BLD: ${{ needs.validate-image-errors.outputs.build_present }}
+        run: |
+          REPORT_FILE="${{ env.REPORT_DIR }}/fix-validation-report.md"
+
+          status_icon() { [ "$1" = "true" ] && echo "✅ Present" || echo "❌ Missing"; }
+
+          {
+            echo "# ${REPORT_TITLE}"
+            [ "${INCLUDE_TIMESTAMP}" = "true" ] && echo "" && echo "_Generated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')_"
+            echo ""
+            echo "## Summary"
+            echo ""
+            echo "This report validates that all controlled-error CI workflows exist and"
+            echo "are correctly configured for fix-validation testing."
+            echo ""
+            echo "## CI Build Error Workflows"
+            echo ""
+            echo "| Error Type       | Workflow File                      | Status |"
+            echo "|------------------|------------------------------------|--------|"
+            echo "| Authentication   | ci-build-auth-error.yaml           | $(status_icon ${CI_AUTH}) |"
+            echo "| Package Version  | ci-build-package-error.yaml        | $(status_icon ${CI_PKG}) |"
+            echo "| Syntax           | ci-build-syntax-error.yaml         | $(status_icon ${CI_SYN}) |"
+            echo "| Timeout          | ci-build-timeout-error.yaml        | $(status_icon ${CI_TMO}) |"
+            echo ""
+            echo "## Image Error Workflows"
+            echo ""
+            echo "| Error Type       | Workflow File                      | Status |"
+            echo "|------------------|------------------------------------|--------|"
+            echo "| Authentication   | image-auth-error.yaml              | $(status_icon ${IMG_AUTH}) |"
+            echo "| Package Version  | image-package-error.yaml           | $(status_icon ${IMG_PKG}) |"
+            echo "| Syntax           | image-syntax-error.yaml            | $(status_icon ${IMG_SYN}) |"
+            echo "| Timeout          | image-timeout-error.yaml           | $(status_icon ${IMG_TMO}) |"
+            echo "| Build            | image-reuse-build-error.yaml       | $(status_icon ${IMG_BLD}) |"
+            echo ""
+            echo "## Run Information"
+            echo ""
+            echo "| Field           | Value |"
+            echo "|-----------------|-------|"
+            echo "| Repository      | ${{ github.repository }} |"
+            echo "| Branch / Ref    | ${{ github.ref_name }} |"
+            echo "| Run ID          | ${{ github.run_id }} |"
+            echo "| Triggered by    | ${{ github.actor }} |"
+            echo "| Go Version      | ${GOLANG_VERSION} |"
+          } | tee "${REPORT_FILE}"
+
+          # Also write to the Actions job summary
+          cat "${REPORT_FILE}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fix-validation-report-${{ github.run_id }}
+          path: ${{ env.REPORT_DIR }}/
+          retention-days: 30

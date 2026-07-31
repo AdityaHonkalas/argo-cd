@@ -288,17 +288,83 @@ These workflows can be safely deleted if no longer needed. They don't affect pro
 
 ---
 
+## Report Generation Workflows
+
+The following workflows validate that all fix-validation error workflows are
+present and correctly configured.  The base workflow generates a Markdown report
+and uploads it as a build artifact; each error variant injects a specific
+failure class into the reporting pipeline itself.
+
+### Base Workflow
+
+#### `report-fix-validation.yaml`
+- **Purpose**: Generates a Markdown fix-validation report from all controlled-error workflows
+- **Jobs**:
+  - `validate-ci-build-errors` — checks for ci-build error workflow files
+  - `validate-image-errors` — checks for image error workflow files
+  - `generate-report` — compiles results into Markdown, posts to job summary, and uploads as an artifact
+- **Inputs**: `report_title` (optional string), `include_timestamp` (optional boolean)
+- **Trigger**: Manual (`workflow_dispatch`)
+
+---
+
+### Report Error Variants
+
+#### 21. `report-dependency-error.yaml`
+- **Base Workflow**: `report-fix-validation.yaml`
+- **Error Type**: Dependency Error
+- **Error Location**: `generate-report` job, "Upload report artifact" step
+- **Error Details**: `actions/upload-artifact` pinned to non-existent version `@v99.99.99`
+- **Expected Failure**: Action dependency resolution fails — report is generated but cannot be uploaded
+- **Trigger**: Manual (`workflow_dispatch`)
+
+#### 22. `report-package-error.yaml`
+- **Base Workflow**: `report-fix-validation.yaml`
+- **Error Type**: Package Version Error
+- **Error Location**: `generate-report` job, "Setup Golang" step
+- **Error Details**: `GOLANG_VERSION` set to `99.99.99` — invalid Go release
+- **Expected Failure**: `actions/setup-go` cannot resolve the version; job aborts before any report step runs
+- **Trigger**: Manual (`workflow_dispatch`)
+
+#### 23. `report-syntax-error.yaml`
+- **Base Workflow**: `report-fix-validation.yaml`
+- **Error Type**: Syntax Error
+- **Error Location**: `generate-report` job, "Generate Markdown report" step
+- **Error Details**: Missing colon after `name` keyword (`- name Generate Markdown report`)
+- **Expected Failure**: GitHub Actions YAML parser rejects the workflow at load time; no run is created
+- **Trigger**: Manual (`workflow_dispatch`)
+
+#### 24. `report-command-error.yaml`
+- **Base Workflow**: `report-fix-validation.yaml`
+- **Error Type**: Command Error
+- **Error Location**: `generate-report` job, "Compile report data with report tool" step
+- **Error Details**: Calls `nonexistent-report-tool` — a binary not installed on any GitHub-hosted runner
+- **Expected Failure**: Shell exits with code 127 ("command not found"); subsequent steps are skipped
+- **Trigger**: Manual (`workflow_dispatch`)
+
+#### 25. `report-env-error.yaml`
+- **Base Workflow**: `report-fix-validation.yaml`
+- **Error Type**: Environment Variable Error
+- **Error Location**: `generate-report` job, "Generate Markdown report" step
+- **Error Details**: Script runs with `set -euo pipefail` and references `${REPORT_SIGNING_KEY}` which is never defined
+- **Expected Failure**: Bash raises "unbound variable" and exits 1 before the report body is written
+- **Trigger**: Manual (`workflow_dispatch`)
+
+---
+
 ## Summary
 
-| Workflow Base | Auth Error | Package Error | Syntax Error | Timeout Error |
-|---------------|------------|---------------|--------------|---------------|
-| ci-build | ✅ | ✅ | ✅ | ✅ |
-| image | ✅ | ✅ | ✅ | ✅ |
-| image-reuse | ✅ | ✅ | ✅ | ✅ |
-| codeql | ✅ | ✅ | ✅ | ✅ |
-| pr-title-check | ✅ | ✅ | ✅ | ✅ |
+| Workflow Base    | Auth Error | Package Error | Syntax Error | Timeout Error | Build Error | Dependency Error | Command Error | Env Error |
+|------------------|------------|---------------|--------------|---------------|-------------|------------------|---------------|-----------|
+| ci-build         | ✅ | ✅ | ✅ | ✅ | —  | —  | —  | —  |
+| image            | ✅ | ✅ | ✅ | ✅ | —  | —  | —  | —  |
+| image-reuse      | ✅ | ✅ | ✅ | ✅ | ✅ | —  | —  | —  |
+| codeql           | ✅ | ✅ | ✅ | ✅ | —  | —  | —  | —  |
+| pr-title-check   | ✅ | ✅ | ✅ | ✅ | —  | —  | —  | —  |
+| report           | —  | ✅ | ✅ | —  | —  | ✅ | ✅ | ✅ |
 
-**Total Error Workflows**: 20
+**Total Error Workflows**: 25
+**New Report Workflows**: 6 (1 base + 5 error variants)
 
 ---
 
@@ -308,5 +374,5 @@ For questions or issues with these error testing workflows, please refer to the 
 
 ---
 
-*Last Updated: 2026-06-13*
-*Version: 1.0*
+*Last Updated: 2026-06-14*
+*Version: 1.1*
