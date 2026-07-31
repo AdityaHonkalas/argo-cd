@@ -7,6 +7,10 @@
 
 name: Report - Fix Validation Results (Dependency Error)
 on:
+  # Manual trigger from the GitHub Actions UI.
+  # IMPORTANT: GitHub only shows the "Run workflow" button when this file
+  # exists on the repository's default branch (main). Once merged to main,
+  # the button appears and you can select any branch in the dropdown.
   workflow_dispatch:
     inputs:
       report_title:
@@ -14,6 +18,13 @@ on:
         required: false
         default: 'CI Fix Validation Report - Dependency Error'
         type: string
+  # Push trigger on main ensures this workflow is registered on the default
+  # branch, which is required for workflow_dispatch to be visible in the UI.
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/report-dependency-error.yaml'
 
 env:
   GOLANG_VERSION: '1.24.3'
